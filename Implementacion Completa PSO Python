@@ -1,0 +1,415 @@
+"""
+Optimización por Enjambre de Partículas (PSO)
+Implementación para funciones benchmark
+Autor: Cristian Joel Curmilluni Ancco
+Fecha: Enero 2026
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+import json
+import time
+
+class PSO:
+    """Optimización por Enjambre de Partículas"""
+    
+    def __init__(self, n_particles=30, n_dimensions=3, 
+                 w=0.7, c1=1.5, c2=1.5, max_iter=100):
+        """
+        Inicializa el algoritmo PSO
+        
+        Args:
+            n_particles (int): Número de partículas en el enjambre
+            n_dimensions (int): Dimensiones del problema
+            w (float): Peso de inercia
+            c1 (float): Coeficiente cognitivo
+            c2 (float): Coeficiente social
+            max_iter (int): Número máximo de iteraciones
+        """
+        self.n_particles = n_particles
+        self.n_dimensions = n_dimensions
+        self.w = w
+        self.c1 = c1
+        self.c2 = c2
+        self.max_iter = max_iter
+        self.gbest_history = []
+        self.positions_history = []
+    
+    def optimize(self, func, bounds, verbose=True):
+        """
+        Ejecuta el algoritmo PSO
+        
+        Args:
+            func (callable): Función objetivo a minimizar
+            bounds (list): Lista de tuplas (min, max) para cada dimensión
+            verbose (bool): Mostrar progreso de la optimización
+        
+        Returns:
+            tuple: (gbest_pos, gbest_value, history)
+        """
+        start_time = time.time()
+        
+        # Inicializar posiciones y velocidades aleatorias
+        positions = np.random.uniform(
+            low=[b[0] for b in bounds],
+            high=[b[1] for b in bounds],
+            size=(self.n_particles, self.n_dimensions)
+        )
+        
+        velocities = np.random.uniform(
+            low=-1, high=1,
+            size=(self.n_particles, self.n_dimensions)
+        )
+        
+        # Inicializar mejores posiciones personales
+        pbest_pos = positions.copy()
+        pbest_value = np.array([func(p) for p in positions])
+        
+        # Inicializar mejor posición global
+        gbest_idx = np.argmin(pbest_value)
+        gbest_pos = pbest_pos[gbest_idx].copy()
+        gbest_value = pbest_value[gbest_idx]
+        
+        # Guardar posiciones iniciales
+        self.positions_history.append(positions.copy())
+        
+        # Iteraciones principales
+        for iteration in range(self.max_iter):
+            for i in range(self.n_particles):
+                # Generar números aleatorios
+                r1, r2 = np.random.random(), np.random.random()
+                
+                # Componente cognitivo (experiencia personal)
+                cognitive = self.c1 * r1 * (pbest_pos[i] - positions[i])
+                
+                # Componente social (experiencia del enjambre)
+                social = self.c2 * r2 * (gbest_pos - positions[i])
+                
+                # Actualizar velocidad con inercia
+                velocities[i] = (self.w * velocities[i] + 
+                                cognitive + social)
+                
+                # Aplicar límites de velocidad
+                v_max = 0.2 * np.array([b[1] - b[0] for b in bounds])
+                velocities[i] = np.clip(velocities[i], -v_max, v_max)
+                
+                # Actualizar posición
+                positions[i] = positions[i] + velocities[i]
+                
+                # Aplicar límites del dominio
+                for d in range(self.n_dimensions):
+                    positions[i][d] = np.clip(
+                        positions[i][d], bounds[d][0], bounds[d][1]
+                    )
+                
+                # Evaluar nueva posición
+                value = func(positions[i])
+                
+                # Actualizar mejor posición personal
+                if value < pbest_value[i]:
+                    pbest_pos[i] = positions[i].copy()
+                    pbest_value[i] = value
+                    
+                    # Actualizar mejor posición global
+                    if value < gbest_value:
+                        gbest_pos = positions[i].copy()
+                        gbest_value = value
+            
+            # Guardar historia de convergencia
+            self.gbest_history.append(gbest_value)
+            
+            # Guardar posiciones para visualización (cada 10 iteraciones)
+            if (iteration + 1) % 10 == 0:
+                self.positions_history.append(positions.copy())
+            
+            # Imprimir progreso
+            if verbose and (iteration + 1) % 10 == 0:
+                print(f"Iteración {iteration + 1:3d}: "
+                      f"Mejor valor = {gbest_value:.8f}")
+        
+        elapsed_time = time.time() - start_time
+        
+        if verbose:
+            print(f"\n✓ Optimización completada en {elapsed_time:.2f} segundos")
+            print(f"✓ Mejor valor encontrado: {gbest_value:.8f}")
+            print(f"✓ Posición óptima: {gbest_pos}")
+        
+        return gbest_pos, gbest_value, self.gbest_history
+
+
+# ============================================================================
+# FUNCIONES DE PRUEBA (BENCHMARK FUNCTIONS)
+# ============================================================================
+
+def rastrigin(x):
+    """
+    Función de Rastrigin
+    Dominio: [-5.12, 5.12]^n
+    Mínimo global: f(0,...,0) = 0
+    """
+    n = len(x)
+    return 10 * n + np.sum(x**2 - 10 * np.cos(2 * np.pi * x))
+
+
+def rosenbrock(x):
+    """
+    Función de Rosenbrock
+    Dominio: [-5, 10]^n
+    Mínimo global: f(1,...,1) = 0
+    """
+    return np.sum(100 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2)
+
+
+def ackley(x):
+    """
+    Función de Ackley
+    Dominio: [-32.768, 32.768]^n
+    Mínimo global: f(0,...,0) = 0
+    """
+    n = len(x)
+    sum1 = np.sum(x**2)
+    sum2 = np.sum(np.cos(2 * np.pi * x))
+    return (-20 * np.exp(-0.2 * np.sqrt(sum1 / n)) - 
+            np.exp(sum2 / n) + 20 + np.e)
+
+
+def sphere(x):
+    """
+    Función Sphere (para pruebas adicionales)
+    Dominio: [-100, 100]^n
+    Mínimo global: f(0,...,0) = 0
+    """
+    return np.sum(x**2)
+
+
+# ============================================================================
+# FUNCIONES DE VISUALIZACIÓN
+# ============================================================================
+
+def plot_convergence(history, title="Convergencia PSO", save_path=None):
+    """Grafica la curva de convergencia"""
+    plt.figure(figsize=(10, 6))
+    plt.plot(history, linewidth=2, color='#003366')
+    plt.xlabel('Iteración', fontsize=12)
+    plt.ylabel('Mejor Valor de Función', fontsize=12)
+    plt.title(title, fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.yscale('log')
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_3d_function(func, bounds, title="Función 3D", save_path=None):
+    """Visualiza una función en 3D (solo para 2 dimensiones)"""
+    if len(bounds) > 2:
+        print("Visualización 3D solo disponible para funciones 2D")
+        return
+    
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Crear malla
+    x = np.linspace(bounds[0][0], bounds[0][1], 100)
+    y = np.linspace(bounds[1][0], bounds[1][1], 100)
+    X, Y = np.meshgrid(x, y)
+    Z = np.zeros_like(X)
+    
+    # Evaluar función
+    for i in range(X.shape[0]):
+        for j in range(X.shape[1]):
+            Z[i, j] = func(np.array([X[i, j], Y[i, j]]))
+    
+    # Graficar superficie
+    surf = ax.plot_surface(X, Y, Z, cmap=cm.viridis, alpha=0.8)
+    ax.set_xlabel('X₁', fontsize=12)
+    ax.set_ylabel('X₂', fontsize=12)
+    ax.set_zlabel('f(X)', fontsize=12)
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_comparison(results, save_path=None):
+    """Compara resultados de múltiples ejecuciones"""
+    functions = list(results.keys())
+    means = [results[f]['mean'] for f in functions]
+    stds = [results[f]['std'] for f in functions]
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x_pos = np.arange(len(functions))
+    
+    bars = ax.bar(x_pos, means, yerr=stds, capsize=10, 
+                  color=['#003366', '#FF6600', '#336699'])
+    ax.set_xlabel('Función', fontsize=12)
+    ax.set_ylabel('Valor Medio ± Desv. Est.', fontsize=12)
+    ax.set_title('Comparación de Resultados PSO', fontsize=14, fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(functions)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+# ============================================================================
+# EXPERIMENTACIÓN Y ANÁLISIS
+# ============================================================================
+
+def run_experiment(func, bounds, func_name, n_runs=30):
+    """
+    Ejecuta múltiples corridas del algoritmo PSO
+    
+    Args:
+        func: Función objetivo
+        bounds: Límites del dominio
+        func_name: Nombre de la función
+        n_runs: Número de ejecuciones independientes
+    
+    Returns:
+        dict: Estadísticas de las ejecuciones
+    """
+    print(f"\n{'='*60}")
+    print(f"Experimento: {func_name}")
+    print(f"{'='*60}")
+    
+    results = []
+    best_solution = None
+    best_value = float('inf')
+    
+    for run in range(n_runs):
+        print(f"\n--- Ejecución {run + 1}/{n_runs} ---")
+        
+        pso = PSO(n_particles=30, n_dimensions=len(bounds), 
+                  max_iter=100, w=0.7, c1=1.5, c2=1.5)
+        
+        pos, val, history = pso.optimize(func, bounds, verbose=False)
+        results.append(val)
+        
+        if val < best_value:
+            best_value = val
+            best_solution = pos
+            best_history = history
+    
+    # Calcular estadísticas
+    stats = {
+        'best': np.min(results),
+        'mean': np.mean(results),
+        'worst': np.max(results),
+        'std': np.std(results),
+        'median': np.median(results),
+        'best_solution': best_solution,
+        'best_history': best_history,
+        'all_results': results
+    }
+    
+    print(f"\n{'='*60}")
+    print(f"Estadísticas finales - {func_name}:")
+    print(f"  Mejor:   {stats['best']:.8f}")
+    print(f"  Media:   {stats['mean']:.8f}")
+    print(f"  Peor:    {stats['worst']:.8f}")
+    print(f"  Desv:    {stats['std']:.8f}")
+    print(f"  Mediana: {stats['median']:.8f}")
+    print(f"{'='*60}")
+    
+    return stats
+
+
+def sensitivity_analysis(func, bounds, param_name, param_values):
+    """
+    Análisis de sensibilidad de parámetros
+    
+    Args:
+        func: Función objetivo
+        bounds: Límites del dominio
+        param_name: Nombre del parámetro a analizar
+        param_values: Lista de valores a probar
+    """
+    results = []
+    
+    print(f"\nAnálisis de sensibilidad: {param_name}")
+    print("="*50)
+    
+    for value in param_values:
+        kwargs = {'n_particles': 30, 'n_dimensions': len(bounds), 
+                  'max_iter': 100, 'w': 0.7, 'c1': 1.5, 'c2': 1.5}
+        kwargs[param_name] = value
+        
+        pso = PSO(**kwargs)
+        _, best_val, _ = pso.optimize(func, bounds, verbose=False)
+        results.append(best_val)
+        
+        print(f"{param_name} = {value}: Mejor valor = {best_val:.8f}")
+    
+    # Graficar resultados
+    plt.figure(figsize=(10, 6))
+    plt.plot(param_values, results, marker='o', linewidth=2, 
+             markersize=8, color='#003366')
+    plt.xlabel(param_name, fontsize=12)
+    plt.ylabel('Mejor Valor de Función', fontsize=12)
+    plt.title(f'Sensibilidad de {param_name}', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.show()
+
+
+# ============================================================================
+# MAIN - EJECUCIÓN PRINCIPAL
+# ============================================================================
+
+if __name__ == "__main__":
+    print("\n" + "="*70)
+    print(" "*15 + "OPTIMIZACIÓN POR ENJAMBRE DE PARTÍCULAS")
+    print("="*70)
+    
+    # Definir funciones y sus dominios
+    benchmark_functions = {
+        'Rastrigin': (rastrigin, [(-5.12, 5.12)] * 3),
+        'Rosenbrock': (rosenbrock, [(-5, 10)] * 3),
+        'Ackley': (ackley, [(-32.768, 32.768)] * 3)
+    }
+    
+    # Ejecutar experimentos
+    all_results = {}
+    
+    for func_name, (func, bounds) in benchmark_functions.items():
+        stats = run_experiment(func, bounds, func_name, n_runs=30)
+        all_results[func_name] = stats
+        
+        # Graficar convergencia de la mejor ejecución
+        plot_convergence(stats['best_history'], 
+                        title=f"Convergencia - {func_name}",
+                        save_path=f"convergence_{func_name.lower()}.png")
+    
+    # Comparar resultados
+    comparison_data = {
+        name: {'mean': stats['mean'], 'std': stats['std']}
+        for name, stats in all_results.items()
+    }
+    plot_comparison(comparison_data, save_path="comparison_results.png")
+    
+    # Guardar resultados en JSON
+    results_json = {
+        name: {
+            'best': float(stats['best']),
+            'mean': float(stats['mean']),
+            'worst': float(stats['worst']),
+            'std': float(stats['std']),
+            'median': float(stats['median']),
+            'best_solution': stats['best_solution'].tolist()
+        }
+        for name, stats in all_results.items()
+    }
+    
+    with open('results.json', 'w') as f:
+        json.dump(results_json, f, indent=4)
+    
+    print("\n✓ Resultados guardados en 'results.json'")
+    print("✓ Gráficos guardados en archivos PNG")
+    print("\nExperimento completado exitosamente!")
